@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Study Library</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#14213d;--paper:#f6f7f9;--line:#d9dee6;--accent:#0b7a75;--hi:#f2c14e;--mute:#5b6577}
+*{box-sizing:border-box}
+body{margin:0;font-family:Figtree,system-ui,sans-serif;background:var(--paper);color:var(--ink);line-height:1.5}
+header{padding:28px 20px 12px;max-width:900px;margin:auto}
+h1{margin:0;font-size:clamp(28px,6vw,44px);font-weight:800;letter-spacing:-.02em}
+.bar{max-width:900px;margin:auto;padding:0 20px 12px;display:flex;gap:8px;flex-wrap:wrap}
+input[type=search]{flex:1 1 200px;padding:11px 14px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff}
+.chips{display:flex;gap:6px;flex-wrap:wrap;width:100%}
+.chip{border:1px solid var(--line);background:#fff;padding:6px 12px;border-radius:99px;font:inherit;font-size:14px;cursor:pointer;color:var(--ink)}
+.chip[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+main{max-width:900px;margin:auto;padding:0 20px 60px}
+h2{font-size:20px;margin:30px 0 8px;padding-bottom:6px;border-bottom:3px solid var(--hi);display:inline-block}
+.row{display:flex;gap:14px;align-items:center;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:8px 0;font:inherit;color:inherit;cursor:pointer}
+.row:hover,.row:focus-visible{border-color:var(--accent);outline:none}
+.tag{flex:none;width:52px;text-align:center;font-weight:800;font-size:13px;padding:6px 0;border-radius:6px;background:var(--accent);color:#fff}
+.tag.pdf{background:var(--ink)}
+.t{flex:1;font-weight:600}.d{color:var(--mute);font-size:13px}
+.msg{color:var(--mute);padding:30px 0}
+dialog{width:min(960px,96vw);border:0;border-radius:10px;padding:0;background:#000}
+dialog::backdrop{background:rgba(10,15,30,.7)}
+.top{display:flex;justify-content:space-between;gap:10px;align-items:center;background:var(--ink);color:#fff;padding:10px 14px;font-weight:600}
+.top button,.top a{background:none;border:1px solid #fff5;color:#fff;border-radius:6px;padding:5px 10px;font:inherit;font-size:14px;text-decoration:none;cursor:pointer}
+iframe{display:block;width:100%;height:min(70vh,540px);border:0;background:#000}
+</style>
+</head>
+<body>
+<header><h1 id="site"></h1></header>
+<div class="bar"><input type="search" id="q" placeholder="Search videos and PDFs"><div class="chips" id="chips"></div></div>
+<main id="list"><p class="msg">Loading…</p></main>
+<dialog id="dlg"><div class="top"><span id="dt"></span><span><a id="dl" target="_blank" rel="noopener">Open in Drive</a> <button id="cl">Close</button></span></div><iframe id="fr" allow="autoplay; fullscreen" allowfullscreen></iframe></dialog>
+<script src="config.js"></script>
+<script>
+document.getElementById('site').textContent=SITE_TITLE;document.title=SITE_TITLE;
+let items=[],topic='All';
+const $=id=>document.getElementById(id);
+const fmt=d=>new Date(d).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+fetch(API_URL).then(r=>r.json()).then(j=>{items=j.items||[];chips();render()}).catch(()=>$('list').innerHTML='<p class="msg">Could not load content. Please try again.</p>');
+function chips(){const t=['All',...new Set(items.map(i=>i.topic))];$('chips').innerHTML='';t.forEach(x=>{const b=document.createElement('button');b.className='chip';b.textContent=x;b.setAttribute('aria-pressed',x===topic);b.onclick=()=>{topic=x;chips();render()};$('chips').appendChild(b)})}
+function render(){
+ const s=$('q').value.toLowerCase(),box=$('list');box.innerHTML='';
+ const f=items.filter(i=>(topic==='All'||i.topic===topic)&&(i.title+i.topic).toLowerCase().includes(s));
+ if(!f.length){box.innerHTML='<p class="msg">Nothing here yet.</p>';return}
+ const g={};f.forEach(i=>(g[i.topic]=g[i.topic]||[]).push(i));
+ Object.keys(g).forEach(k=>{const h=document.createElement('h2');h.textContent=k;box.appendChild(h);
+  g[k].forEach(i=>{const b=document.createElement('button');b.className='row';
+   b.innerHTML='<span class="tag '+(i.type==='pdf'?'pdf':'')+'">'+(i.type==='pdf'?'PDF':'Video')+'</span><span class="t"></span><span class="d">'+fmt(i.date)+'</span>';
+   b.querySelector('.t').textContent=i.title;b.onclick=()=>open(i);box.appendChild(b)})})
+}
+function open(i){$('dt').textContent=i.title;$('fr').src='https://drive.google.com/file/d/'+i.fileId+'/preview';$('dl').href='https://drive.google.com/file/d/'+i.fileId+'/view';$('dlg').showModal()}
+$('cl').onclick=()=>$('dlg').close();$('dlg').addEventListener('close',()=>$('fr').src='about:blank');
+$('q').oninput=render;
+</script>
+</body>
+</html>

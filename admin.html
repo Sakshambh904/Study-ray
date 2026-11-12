@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#14213d;--paper:#f6f7f9;--line:#d9dee6;--accent:#0b7a75;--hi:#f2c14e;--mute:#5b6577;--bad:#b3261e}
+*{box-sizing:border-box}
+body{margin:0;font-family:Figtree,system-ui,sans-serif;background:var(--paper);color:var(--ink)}
+.w{max-width:680px;margin:auto;padding:24px 20px 60px}
+h1{font-size:30px;margin:0 0 18px;font-weight:800}h2{font-size:18px;margin:32px 0 8px}
+label{display:block;font-weight:600;margin:14px 0 4px;font-size:14px}
+input,select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff}
+button{font:inherit;font-weight:600;border:0;border-radius:8px;padding:12px 18px;background:var(--accent);color:#fff;cursor:pointer}
+button:disabled{opacity:.5}
+.alt{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.tabs{display:flex;gap:8px;margin:14px 0 0}
+.tabs button{flex:1}.tabs .on{background:var(--ink);color:#fff}
+progress{width:100%;height:14px;margin-top:14px}
+#st{margin-top:10px;font-size:14px;color:var(--mute);min-height:20px}
+#st.err{color:var(--bad)}
+.item{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.item span{flex:1;font-size:15px}.item small{color:var(--mute);display:block}
+.del{background:none;color:var(--bad);border:1px solid var(--line);padding:6px 10px}
+#app{display:none}
+</style>
+</head>
+<body>
+<div class="w">
+<h1>Admin panel</h1>
+<div id="login"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password"><p><button id="go">Sign in</button></p><div id="le" style="color:var(--bad)"></div></div>
+
+<div id="app">
+ <label for="topic">Topic</label>
+ <input id="topic" list="topics" placeholder="e.g. Algebra, Chapter 1">
+ <datalist id="topics"></datalist>
+ <label for="title">Title</label>
+ <input id="title" placeholder="e.g. Lecture 5: Quadratic equations">
+
+ <div class="tabs"><button id="t1" class="on">Upload file</button><button id="t2" class="alt">Use Drive link</button></div>
+ <div id="p1"><label for="file">Video or PDF</label><input id="file" type="file" accept="video/*,application/pdf"></div>
+ <div id="p2" style="display:none"><label for="link">Google Drive link</label><input id="link" placeholder="https://drive.google.com/file/d/…"></div>
+
+ <p><button id="up">Publish</button></p>
+ <progress id="pr" value="0" max="100" style="display:none"></progress>
+ <div id="st"></div>
+
+ <h2>Published</h2><div id="items"></div>
+</div>
+</div>
+<script src="config.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+let PW=sessionStorage.getItem('pw')||'',mode='file';
+const api=b=>fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({password:PW,...b})}).then(r=>r.json());
+const say=(m,e)=>{$('st').textContent=m;$('st').className=e?'err':''};
+async function login(){const r=await api({action:'check'}).catch(()=>({error:'Network error'}));
+ if(r.ok){sessionStorage.setItem('pw',PW);$('login').style.display='none';$('app').style.display='block';load()}else{$('le').textContent=r.error||'Wrong password'}}
+$('go').onclick=()=>{PW=$('pw').value;login()};$('pw').onkeydown=e=>{if(e.key==='Enter')$('go').click()};
+if(PW)login();
+$('t1').onclick=()=>{mode='file';$('p1').style.display='';$('p2').style.display='none';$('t1').className='on';$('t2').className='alt'};
+$('t2').onclick=()=>{mode='link';$('p2').style.display='';$('p1').style.display='none';$('t2').className='on';$('t1').className='alt'};
+
+function load(){fetch(API_URL).then(r=>r.json()).then(j=>{
+ const it=j.items||[];$('topics').innerHTML=[...new Set(it.map(i=>i.topic))].map(t=>'<option value="'+t.replace(/"/g,'&quot;')+'">').join('');
+ $('items').innerHTML='';it.forEach(i=>{const d=document.createElement('div');d.className='item';
+  d.innerHTML='<span><b></b><small></small></span><button class="del">Delete</button>';
+  d.querySelector('b').textContent=i.title;d.querySelector('small').textContent=i.topic+' · '+i.type+' · '+i.date.slice(0,10);
+  d.querySelector('.del').onclick=async()=>{if(confirm('Delete "'+i.title+'"? The file moves to Drive trash.')){await api({action:'delete',id:i.id});load()}};
+  $('items').appendChild(d)})})}
+
+function putChunks(url,file,onp){return new Promise(async(res,rej)=>{
+ const CH=16*1024*1024,N=file.size;let pos=0;
+ while(pos<N){const end=Math.min(pos+CH,N),blob=file.slice(pos,end);let ok=false,out;
+  for(let a=0;a<4&&!ok;a++){
+   try{out=await new Promise((s,f)=>{const x=new XMLHttpRequest();x.open('PUT',url);
+    x.setRequestHeader('Content-Range','bytes '+pos+'-'+(end-1)+'/'+N);
+    x.upload.onprogress=e=>onp(pos+e.loaded);
+    x.onload=()=>(x.status===308||x.status===200||x.status===201)?s(x):f(new Error('HTTP '+x.status));
+    x.onerror=()=>f(new Error('Network'));x.send(blob)});ok=true}
+   catch(e){if(a===3)return rej(e);say('Connection problem, retrying…',false);await new Promise(r=>setTimeout(r,2000*(a+1)))}}
+  pos=end;onp(pos);if(out.status!==308){try{return res(JSON.parse(out.responseText))}catch(e){return rej(new Error('Bad response'))}}}
+ rej(new Error('Upload did not finish'))})}
+
+$('up').onclick=async()=>{
+ const topic=$('topic').value.trim(),title=$('title').value.trim();
+ if(!topic||!title)return say('Enter a topic and a title.',true);
+ $('up').disabled=true;
+ try{
+  if(mode==='link'){
+   const link=$('link').value.trim();if(!link)throw new Error('Paste a Drive link.');
+   const type=/pdf/i.test(title+link)?'pdf':'video';
+   const r=await api({action:'link',topic,title,type,link});if(r.error)throw new Error(r.error);
+  }else{
+   const f=$('file').files[0];if(!f)throw new Error('Choose a file.');
+   const type=f.type==='application/pdf'?'pdf':'video';
+   say('Preparing upload…');
+   const s=await api({action:'start',topic,name:f.name,mime:f.type,origin:location.origin});if(s.error)throw new Error(s.error);
+   $('pr').style.display='block';
+   const meta=await putChunks(s.url,f,n=>{const p=Math.round(n/f.size*100);$('pr').value=p;say('Uploading '+p+'% ('+(n/1048576|0)+' of '+(f.size/1048576|0)+' MB). Keep this tab open.')});
+   say('Publishing…');
+   const r=await api({action:'finish',topic,title,type,fileId:meta.id});if(r.error)throw new Error(r.error);
+  }
+  say('Published. Videos can take a few minutes to become playable while Drive processes them.');
+  $('title').value='';$('file').value='';$('link').value='';$('pr').style.display='none';load();
+ }catch(e){say(e.message,true)}
+ $('up').disabled=false};
+</script>
+</body>
+</html>
